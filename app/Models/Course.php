@@ -26,8 +26,6 @@ class Course extends Model
         'theory_paper_hrs',
         'total_marks',
         'course_type',
-        'is_placeholder',
-        'linked_course_id',
         'elective_group',
         'is_common_course',
         'year',
@@ -38,7 +36,6 @@ class Course extends Model
     protected $casts = [
         'is_common_course' => 'boolean',
         'is_award' => 'boolean',
-        'is_placeholder' => 'boolean',
         'credits' => 'decimal:2',
     ];
 
@@ -60,7 +57,7 @@ class Course extends Model
         return ['Elective I', 'Elective II', 'Elective III', 'Elective IV'];
     }
 
-    // ── Relationships ──────────────────────────────────────────────────────
+    // -- Relationships --
 
     public function programme(): BelongsTo
     {
@@ -69,7 +66,7 @@ class Course extends Model
 
     public function level(): BelongsTo
     {
-        return $this->belongsTo(ProgrammeLevel::class, 'level_id');
+        return $this->belongsTo(ProgrammeLevel::class , 'level_id');
     }
 
     public function departments(): BelongsToMany
@@ -87,7 +84,7 @@ class Course extends Model
         return $this->hasMany(CourseAssessment::class);
     }
 
-    // ── Computed helpers ───────────────────────────────────────────────────
+    // -- Computed helpers --
 
     public function computedTotalHours(): int
     {
@@ -99,7 +96,7 @@ class Course extends Model
         return $this->assessments()->sum('max_marks');
     }
 
-    // ── Boot ───────────────────────────────────────────────────────────────
+    // -- Boot --
 
     protected static function boot(): void
     {
