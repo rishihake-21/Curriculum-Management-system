@@ -7,9 +7,8 @@ use App\Models\Course;
 use App\Models\Department;
 use App\Models\Programme;
 use App\Models\ProgrammeLevel;
-use App\Models\ProgrammeStructure;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
 class CourseController extends Controller
@@ -17,7 +16,7 @@ class CourseController extends Controller
     public function index(Request $request, Programme $programme)
     {
         $query = $programme->courses()
-            ->with(['level', 'departments'])
+            ->with(['level', 'departments', 'assessments'])
             ->withTrashed();  // allow seeing soft-deleted for management
 
         if ($request->filled('level_id')) {
@@ -42,57 +41,44 @@ class CourseController extends Controller
         $programme->load('levels', 'scheme.assessmentComponents');
 
         return view('cdc.courses.form', [
-            'programme'      => $programme,
-            'course'         => null,
-            'types'          => Course::types(),
+            'programme'    => $programme,
+            'course'       => null,
+            'types'        => Course::types(),
             'electiveGroups' => Course::electiveGroups(),
-            'departments'    => Department::orderBy('name')->get(),
-        ]);
-    }
-
-    public function edit(Programme $programme, Course $course)
-    {
-        $programme->load('levels', 'scheme.assessmentComponents');
-        $course->load('departments', 'assessments');
-
-        return view('cdc.courses.form', [
-            'programme'      => $programme,
-            'course'         => $course,
-            'types'          => Course::types(),
-            'electiveGroups' => Course::electiveGroups(),
-            'departments'    => Department::orderBy('name')->get(),
+            'departments'  => Department::orderBy('name')->get(),
+            'schemeRows'   => $programme->scheme?->getCourseAssessmentHeaderRows() ?? [],
+            'leafCols'     => $programme->scheme?->getCourseAssessmentLeafColumns() ?? [],
+            'marks'        => old('assessment_marks', []),
         ]);
     }
 
     public function store(Request $request, Programme $programme)
     {
         $data = $this->validateCourse($request, $programme);
-        $data['total_marks'] = $this->sumAssessmentMarks($request->input('assessment_marks', []));
 
-        $data['programme_id'] = $programme->id;
-        $data['is_placeholder'] = false;
+        if ($request->has('assessment_marks')) {
+            $this->guardAssessmentKeys($programme, $request->input('assessment_marks', []));
+        }
 
-        $this->assertWithinStructureBudget($programme, (int) $data['level_id'], $data, null);
-
-        $course = Course::create($data);
+        $course = $programme->courses()->create($data);
 
         if ($request->has('assessment_marks')) {
             $totalMarks = 0;
-            
             foreach ($request->input('assessment_marks') as $compId => $marks) {
-                if (is_null($marks) || trim($marks) === '') continue;
+                if (is_null($marks) || trim($marks) === '') continue; // Skip empty entries
                 
                 $course->assessments()->create([
                     'component_id' => $compId,
                     'max_marks'    => $marks,
-                    'min_marks'    => 0
+                    'min_marks'    => 0 // Default or handle later
                 ]);
                 $totalMarks += (int) $marks;
             }
+            // Update the stored total marks
             $course->update(['total_marks' => $totalMarks]);
         }
 
-        // Sync departments
+        // Sync departments for common courses
         if ($course->is_common_course && $request->filled('departments')) {
             $course->departments()->sync($request->input('departments'));
         }
@@ -102,23 +88,41 @@ class CourseController extends Controller
             ->with('success', "Course '{$course->course_code}' created successfully.");
     }
 
+    public function edit(Programme $programme, Course $course)
+    {
+        $this->assertCourseInProgramme($programme, $course);
+        $programme->load('levels', 'scheme.assessmentComponents');
+        $course->load('departments', 'assessments');
+
+        $existingMarks = $course->assessments->pluck('max_marks', 'component_id')->toArray();
+
+        return view('cdc.courses.form', [
+            'programme'      => $programme,
+            'course'         => $course,
+            'types'          => Course::types(),
+            'electiveGroups' => Course::electiveGroups(),
+            'departments'    => Department::orderBy('name')->get(),
+            'schemeRows'     => $programme->scheme?->getCourseAssessmentHeaderRows() ?? [],
+            'leafCols'       => $programme->scheme?->getCourseAssessmentLeafColumns() ?? [],
+            'marks'          => old('assessment_marks', $existingMarks),
+        ]);
+    }
+
     public function update(Request $request, Programme $programme, Course $course)
     {
+        $this->assertCourseInProgramme($programme, $course);
         $data = $this->validateCourse($request, $programme, $course);
-        $data['total_marks'] = $this->sumAssessmentMarks($request->input('assessment_marks', []));
 
-        // Map course_type and is_placeholder 
-        // Elective group validation might need logic later (assignElective method requested by user)
-        $data['is_placeholder'] = false; 
-
-        $this->assertWithinStructureBudget($programme, (int) $data['level_id'], $data, $course->id);
+        if ($request->has('assessment_marks')) {
+            $this->guardAssessmentKeys($programme, $request->input('assessment_marks', []));
+        }
 
         $course->update($data);
 
         if ($request->has('assessment_marks')) {
             $course->assessments()->delete();
             $totalMarks = 0;
-            
+             
             foreach ($request->input('assessment_marks') as $compId => $marks) {
                 if (is_null($marks) || trim($marks) === '') continue; // Skip empty entries
                 
@@ -146,6 +150,7 @@ class CourseController extends Controller
 
     public function destroy(Programme $programme, Course $course)
     {
+        $this->assertCourseInProgramme($programme, $course);
         $code = $course->course_code;
         $course->delete();  // Soft delete
 
@@ -172,88 +177,56 @@ class CourseController extends Controller
             ->with('success', 'Course cloned. Please update the course code and title.');
     }
 
-    public function assignElective(Request $request, Programme $programme, Course $course)
+    // -- Private helpers --
+
+    private function assertCourseInProgramme(Programme $programme, Course $course): void
     {
-        $request->validate([
-            'elective_group_id' => 'required|exists:elective_groups,id',
-            'course_master_id'  => 'required|exists:courses,id',
-        ]);
-
-        if (!$course->is_placeholder || $course->course_type !== 'elective') {
-            return redirect()->back()->with('error', 'Only elective placeholders can be assigned.');
-        }
-
-        $groupCourse = \App\Models\ElectiveGroupCourse::where('elective_group_id', $request->elective_group_id)
-            ->where('course_master_id', $request->course_master_id)
-            ->first();
-
-        if (!$groupCourse) {
-            return redirect()->back()->with('error', 'Selected course is not a valid elective for this group.');
-        }
-
-        $masterCourse = Course::with('assessments')->find($request->course_master_id);
-
-        // Validation mapping could also include passing elective group name into the course
-        $electiveGroup = \App\Models\ElectiveGroup::find($request->elective_group_id);
-
-        DB::transaction(function () use ($course, $masterCourse, $electiveGroup) {
-            $course->update([
-                'is_placeholder' => false,
-                'linked_course_id' => $masterCourse->id,
-                'course_code' => $masterCourse->course_code,
-                'course_title' => $masterCourse->course_title,
-                'course_abbr' => $masterCourse->course_abbr,
-                'th_hours' => $masterCourse->th_hours,
-                'tu_hours' => $masterCourse->tu_hours,
-                'pr_hours' => $masterCourse->pr_hours,
-                'total_hours' => $masterCourse->total_hours,
-                'credits' => $masterCourse->credits,
-                'theory_paper_hrs' => $masterCourse->theory_paper_hrs,
-                'total_marks' => $masterCourse->total_marks,
-                'elective_group' => $electiveGroup->name, // store group name in elective_group
-            ]);
-
-            $course->assessments()->delete();
-            foreach ($masterCourse->assessments as $assessment) {
-                $course->assessments()->create([
-                    'component_id' => $assessment->component_id,
-                    'max_marks'    => $assessment->max_marks,
-                    'min_marks'    => $assessment->min_marks
-                ]);
-            }
-        });
-
-        return redirect()->route('cdc.courses.index', $programme)->with('success', 'Elective course assigned successfully.');
+        abort_if((int) $course->programme_id !== (int) $programme->id, 404);
     }
-
-    // ── Private helpers ────────────────────────────────────────────────────
 
     private function validateCourse(Request $request, Programme $programme, ?Course $ignore = null): array
     {
         $levelId = $request->input('level_id');
-        $level = ProgrammeLevel::find($levelId);
+        $level = ProgrammeLevel::where('programme_id', $programme->id)->find($levelId);
         $expectedDigit = $level ? $level->sort_order : null;
 
         $codeRule = [
             'required',
             'string',
-            'max:20', // Increased max length for flexibility
-            'unique:courses,course_code,' . ($ignore?->id ?? 'NULL') . ',id,programme_id,' . $programme->id . ',deleted_at,NULL',
+            'size:6',
+            'regex:/^\\d{6}$/',
+            Rule::unique('courses', 'course_code')
+                ->ignore($ignore?->id)
+                ->where(fn ($q) => $q->where('programme_id', $programme->id)->whereNull('deleted_at')),
+            function (string $attribute, mixed $value, \Closure $fail) use ($expectedDigit) {
+                if ($expectedDigit === null) {
+                    return;
+                }
+                $v = (string) $value;
+                if (strlen($v) !== 6) {
+                    return;
+                }
+                $digit = substr($v, 2, 1);
+                if (!ctype_digit($digit) || (int) $digit !== (int) $expectedDigit) {
+                    $fail("Course code must follow YYLNNN where L matches the selected Level ({$expectedDigit}).");
+                }
+            },
         ];
 
         return $request->validate([
-            'level_id'           => 'required|exists:programme_levels,id',
+            'level_id'           => ['required', Rule::exists('programme_levels', 'id')->where('programme_id', $programme->id)],
             'course_code'        => $codeRule,
             'course_title'       => 'required|string|max:255',
             'course_abbr'        => 'required|string|max:20',
-            'th_hours'           => 'required|integer|min:0',
-            'tu_hours'           => 'required|integer|min:0',
-            'pr_hours'           => 'required|integer|min:0',
-            'credits'            => 'required|numeric|min:0',
-            'theory_paper_hrs'   => 'required|numeric|min:0',
+            'th_hours'           => 'required|integer|min:0|max:40',
+            'tu_hours'           => 'required|integer|min:0|max:40',
+            'pr_hours'           => 'required|integer|min:0|max:60',
+            // Credits should be small. Prevent obvious data-entry mistakes (e.g. marks typed into credits).
+            'credits'            => 'required|numeric|min:0|max:20',
+            'theory_paper_hrs'   => 'required|numeric|min:0|max:6',
             'course_type'        => 'required|in:compulsory,elective,audit',
             'assessment_marks'   => 'nullable|array',
-            'assessment_marks.*' => 'nullable|integer|min:0',
+            'assessment_marks.*' => 'nullable|integer|min:0|max:1000',
             'elective_group'     => 'nullable|required_if:course_type,elective|string|max:50',
             'year'               => 'nullable|integer|min:1|max:5',
             'term'               => 'nullable|in:odd,even',
@@ -264,92 +237,35 @@ class CourseController extends Controller
         ]);
     }
 
-    private function assertWithinStructureBudget(Programme $programme, int $levelId, array $incoming, ?int $ignoreCourseId): void
+    /**
+     * Prevent saving arbitrary component IDs via crafted requests.
+     * Only allow leaf IDs that the scheme exposes for course assessment inputs.
+     *
+     * @param Programme $programme
+     * @param array $assessmentMarks
+     */
+    private function guardAssessmentKeys(Programme $programme, array $assessmentMarks): void
     {
-        $structure = ProgrammeStructure::where('programme_id', $programme->id)
-            ->where('level_id', $levelId)
-            ->first();
+        $allowed = $programme->scheme?->getCourseAssessmentLeafColumns() ?? [];
+        $allowedIds = array_fill_keys(array_map(fn ($c) => (int) $c['id'], $allowed), true);
 
-        if (! $structure) {
+        $bad = [];
+        foreach ($assessmentMarks as $k => $_) {
+            $id = is_numeric($k) ? (int) $k : null;
+            if ($id === null || !isset($allowedIds[$id])) {
+                $bad[] = $k;
+            }
+        }
+
+        if (!empty($bad)) {
             throw ValidationException::withMessages([
-                'level_id' => 'This level has no structure/budget defined yet. Please save "Scheme at a Glance" first.',
+                'assessment_marks' => 'Invalid assessment columns provided (scheme mismatch).',
             ]);
         }
-
-        // If there are still placeholders remaining after this save, we enforce "must not exceed".
-        // When the level is fully filled (no placeholders), we enforce "must match exactly".
-        $remainingPlaceholders = Course::where('programme_id', $programme->id)
-            ->where('level_id', $levelId)
-            ->whereNull('deleted_at')
-            ->when($ignoreCourseId, fn ($q) => $q->where('id', '!=', $ignoreCourseId))
-            ->where(function ($q) {
-                $q->where('is_placeholder', true)->orWhereNull('course_code');
-            })
-            ->count();
-
-        $willStillHavePlaceholders = $remainingPlaceholders > 0;
-
-        $base = Course::where('programme_id', $programme->id)
-            ->where('level_id', $levelId)
-            ->whereNull('deleted_at');
-
-        if ($ignoreCourseId) {
-            $base->where('id', '!=', $ignoreCourseId);
-        }
-
-        $sumTh = (int) $base->sum('th_hours') + (int) ($incoming['th_hours'] ?? 0);
-        $sumTu = (int) $base->sum('tu_hours') + (int) ($incoming['tu_hours'] ?? 0);
-        $sumPr = (int) $base->sum('pr_hours') + (int) ($incoming['pr_hours'] ?? 0);
-        $sumMarks = (int) $base->sum('total_marks') + (int) ($incoming['total_marks'] ?? 0);
-
-        // Credits are decimal; compare with 2dp tolerance.
-        $sumCredits = (float) $base->sum('credits') + (float) ($incoming['credits'] ?? 0);
-        $creditsBudget = (float) $structure->total_credits;
-
-        $errors = [];
-
-        $cmp = function (int $actual, int $budget, string $fieldLabel) use (&$errors, $willStillHavePlaceholders) {
-            if ($willStillHavePlaceholders) {
-                if ($actual > $budget) {
-                    $errors['level_id'] = "{$fieldLabel} total exceeds level budget ({$actual} > {$budget}).";
-                }
-            } else {
-                if ($actual !== $budget) {
-                    $errors['level_id'] = "{$fieldLabel} total must match level budget exactly ({$actual} != {$budget}).";
-                }
-            }
-        };
-
-        $cmp($sumTh, (int) $structure->th_hours, 'TH');
-        $cmp($sumTu, (int) $structure->tu_hours, 'TU');
-        $cmp($sumPr, (int) $structure->pr_hours, 'PR');
-        $cmp($sumMarks, (int) $structure->total_marks, 'Marks');
-
-        if ($willStillHavePlaceholders) {
-            if ($sumCredits - $creditsBudget > 0.009) {
-                $errors['level_id'] = "Credits total exceeds level budget (" . number_format($sumCredits, 2) . " > " . number_format($creditsBudget, 2) . ").";
-            }
-        } else {
-            if (abs($sumCredits - $creditsBudget) > 0.009) {
-                $errors['level_id'] = "Credits total must match level budget exactly (" . number_format($sumCredits, 2) . " != " . number_format($creditsBudget, 2) . ").";
-            }
-        }
-
-        if ($errors) {
-            throw ValidationException::withMessages($errors);
-        }
     }
-
-    private function sumAssessmentMarks(array $assessmentMarks): int
-    {
-        return collect($assessmentMarks)
-            ->filter(fn ($marks) => ! is_null($marks) && trim((string) $marks) !== '')
-            ->sum(fn ($marks) => (int) $marks);
-    }
-
     public function apiShow(Request $request, $code)
     {
-        $query = Course::with(['programme', 'level', 'departments'])
+        $query = Course::with(['programme', 'level', 'departments', 'assessments.component'])
             ->where('course_code', $code);
 
         // Filter by programme code if provided
@@ -373,6 +289,55 @@ class CourseController extends Controller
             return response()->json(['error' => 'Course not found'], 404);
         }
 
+        foreach ($this->mapLegacyExamSchemeFields($course) as $k => $v) {
+            $course->setAttribute($k, $v);
+        }
+
         return response()->json($course);
+    }
+
+    /**
+     * @return array<string, int|null>
+     */
+    private function mapLegacyExamSchemeFields(Course $course): array
+    {
+        $out = [
+            'test_max_marks' => null,   // FA-TH (Max)
+            'theory_max_marks' => null, // SA-TH (Max)
+            'pr_max_marks' => null,     // SA-PR (Max)
+            'or_max_marks' => null,     // OR (Max)
+            'tw_max_marks' => null,     // TW / SLA (Max)
+        ];
+
+        foreach ($course->assessments as $a) {
+            $name = strtolower(trim((string) ($a->component?->component_name ?? '')));
+            $max = is_numeric($a->max_marks) ? (int) $a->max_marks : null;
+            if ($max === null) {
+                continue;
+            }
+
+            if (($out['test_max_marks'] === null) && str_contains($name, 'fa-th') && str_contains($name, 'max')) {
+                $out['test_max_marks'] = $max;
+                continue;
+            }
+            if (($out['theory_max_marks'] === null) && str_contains($name, 'sa-th') && str_contains($name, 'max')) {
+                $out['theory_max_marks'] = $max;
+                continue;
+            }
+            if (($out['pr_max_marks'] === null) && str_contains($name, 'sa-pr') && str_contains($name, 'max')) {
+                $out['pr_max_marks'] = $max;
+                continue;
+            }
+            if (($out['or_max_marks'] === null) && (str_contains($name, 'or') || str_contains($name, 'oral')) && str_contains($name, 'max')) {
+                $out['or_max_marks'] = $max;
+                continue;
+            }
+            if (($out['tw_max_marks'] === null) && (str_contains($name, 'tw') || str_contains($name, 'sla')) && str_contains($name, 'max')) {
+                $out['tw_max_marks'] = $max;
+                continue;
+            }
+        }
+
+        return $out;
     }
 }

@@ -17,11 +17,10 @@ class SamplePathController extends Controller
         $entryLevel = $request->input('entry_level', '10+');
         $entryLevels = ['10+', '12+', 'Lateral'];
 
-        // Load courses (non-deleted, filled only, sorted by level then code)
+        // Load courses (non-deleted, sorted by level then code)
         $courses = $programme->courses()
             ->with('level')
             ->whereNull('deleted_at')
-            ->where('is_placeholder', false)
             ->orderBy('level_id')
             ->orderBy('course_code')
             ->get();
@@ -61,7 +60,7 @@ class SamplePathController extends Controller
 
         // Re-insert
         $assignments = $request->input('assignments', []);
-        // assignments is sent as "term_N[course_id]" → we receive it as
+        // assignments is sent as "term_N[course_id]" -> we receive it as
         // assignments[term_N] = [course_id1, course_id2, ...]
         foreach ($request->input('terms', []) as $term => $courseIds) {
             if (!is_array($courseIds)) continue;
