@@ -1,59 +1,304 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# Curriculum Management System
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+A web-based **Curriculum Management System** designed to simplify, digitize, and manage academic curriculum and syllabus-related processes within an educational institution.
 
-## About Laravel
+The system provides a centralized platform for managing curriculum structures, schemes, courses, electives, syllabus information, booklet generation, dashboards, and academic progress.
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+## Overview
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+Managing academic curriculum manually can involve multiple documents, spreadsheets, approvals, and disconnected workflows. This project aims to provide a structured digital system where curriculum-related information can be created, updated, reviewed, and managed from a centralized platform.
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+The system includes dedicated functionality for curriculum and scheme management along with dashboards and academic workflow support.
 
-## Learning Laravel
+## Key Features
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework. You can also check out [Laravel Learn](https://laravel.com/learn), where you will be guided through building a modern Laravel application.
+### Curriculum & CDC Management
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+- Dynamic curriculum and CDC structure management
+- Curriculum scheme definition and modification
+- Course and subject management
+- Curriculum structure organization
+- Integration between CDC and elective pools
+- Dynamic scheme selection
 
-## Laravel Sponsors
+### Elective Management
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+- Elective pool management
+- CDC-to-elective-pool selection
+- Dynamic elective allocation
+- Structured management of elective subjects
 
-### Premium Partners
+### Syllabus & Scheme Management
 
-- **[Vehikl](https://vehikl.com)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Redberry](https://redberry.international/laravel-development)**
-- **[Active Logic](https://activelogic.com)**
+- Syllabus structure management
+- Scheme definition and improvement
+- Academic scheme organization
+- Syllabus-related administrative workflows
 
-## Contributing
+### Booklet Generation
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+- Automated curriculum/scheme booklet generation
+- Improved booklet generation workflow
+- Structured academic information for booklet preparation
 
-## Code of Conduct
+### Dashboards
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+- Role-based dashboard structure
+- Academic progress tracking
+- Pipeline and workflow tracking
+- Centralized overview of curriculum-related activities
 
-## Security Vulnerabilities
+## System Architecture
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+The application follows a modular web application architecture built around the Laravel framework.
+
+```text
+                    ┌──────────────────────────┐
+                    │       Web Interface       │
+                    │      Blade / JavaScript   │
+                    └────────────┬─────────────┘
+                                 │
+                                 ▼
+                    ┌──────────────────────────┐
+                    │     Laravel Application   │
+                    │                          │
+                    │ Controllers              │
+                    │ Services                 │
+                    │ Models                   │
+                    │ Routes                   │
+                    └────────────┬─────────────┘
+                                 │
+                ┌────────────────┴────────────────┐
+                ▼                                 ▼
+       ┌──────────────────┐              ┌──────────────────┐
+       │    Database      │              │  File Generation │
+       │                  │              │                  │
+       │ Curriculum       │              │ Booklets         │
+       │ Schemes          │              │ Documents        │
+       │ Courses          │              │ Reports          │
+       │ Electives        │              │                  │
+       └──────────────────┘              └──────────────────┘
+```
+
+## Technology Stack
+
+| Layer | Technology |
+|---|---|
+| Backend | Laravel / PHP |
+| Frontend | Blade, JavaScript, CSS |
+| Database | Relational Database |
+| Package Management | Composer |
+| Frontend Build Tool | Vite |
+| Testing | PHPUnit |
+| Version Control | Git / GitHub |
+
+## Project Structure
+
+```text
+Curriculum-Management-system/
+│
+├── app/
+│   ├── Http/
+│   ├── Models/
+│   └── Services/
+│
+├── bootstrap/
+├── config/
+├── database/
+│   ├── migrations/
+│   └── seeders/
+│
+├── public/
+├── resources/
+│   ├── views/
+│   ├── css/
+│   └── js/
+│
+├── routes/
+├── storage/
+├── tests/
+│
+├── artisan
+├── composer.json
+├── package.json
+└── vite.config.js
+```
+
+## Core Modules
+
+The project currently focuses on the following major areas:
+
+- **CDC / Curriculum Management**
+- **Scheme Management**
+- **Course Management**
+- **Elective Pool Management**
+- **Syllabus Management**
+- **Booklet Generation**
+- **Dashboard Management**
+- **Academic Progress Tracking**
+- **Workflow / Pipeline Management**
+
+## Installation
+
+### Prerequisites
+
+Make sure the following are installed:
+
+- PHP
+- Composer
+- Node.js and npm
+- A supported relational database
+- Git
+
+### Clone the Repository
+
+```bash
+git clone https://github.com/rishihake-21/Curriculum-Management-system.git
+cd Curriculum-Management-system
+```
+
+### Install PHP Dependencies
+
+```bash
+composer install
+```
+
+### Install Frontend Dependencies
+
+```bash
+npm install
+```
+
+### Environment Configuration
+
+Create the environment file:
+
+```bash
+cp .env.example .env
+```
+
+On Windows, you can copy `.env.example` to `.env` manually.
+
+Configure the database and other required environment variables in `.env`.
+
+Generate the Laravel application key:
+
+```bash
+php artisan key:generate
+```
+
+### Database Setup
+
+Run migrations:
+
+```bash
+php artisan migrate
+```
+
+If the project requires seed data:
+
+```bash
+php artisan db:seed
+```
+
+### Build Frontend Assets
+
+For development:
+
+```bash
+npm run dev
+```
+
+For production:
+
+```bash
+npm run build
+```
+
+### Start the Application
+
+```bash
+php artisan serve
+```
+
+The application will normally be available at:
+
+```text
+http://127.0.0.1:8000
+```
+
+## Development Workflow
+
+A typical development workflow is:
+
+```text
+Requirement
+     ↓
+Curriculum / Scheme Design
+     ↓
+Database Structure
+     ↓
+Backend Logic
+     ↓
+Dashboard / UI
+     ↓
+Testing
+     ↓
+Booklet / Document Generation
+     ↓
+Academic Review
+```
+
+## Project Goals
+
+The main goals of the system are to:
+
+- Digitize curriculum management workflows
+- Reduce manual curriculum-related work
+- Centralize academic curriculum information
+- Improve scheme and syllabus management
+- Simplify elective management
+- Improve visibility through dashboards
+- Support automated academic document generation
+- Provide a structured platform for future ERP integration
+
+## Future Scope
+
+Potential future enhancements include:
+
+- Integration with an institutional ERP/UMS
+- Advanced role-based access control
+- Approval workflows for curriculum changes
+- Version control for curriculum schemes
+- Advanced academic analytics
+- Notification and communication systems
+- Improved reporting
+- API-based integration with other academic systems
+- Audit logs for curriculum modifications
+
+## Project Status
+
+The system is under active development.
+
+Current development focuses on improving:
+
+- Curriculum/CDC workflows
+- Dynamic scheme management
+- Elective pool integration
+- Dashboard functionality
+- Academic progress tracking
+- Booklet generation
 
 ## License
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+This project is developed for academic and institutional use.
+
+---
+
+## Author
+
+**Rushikesh Hake**
+
+Computer Technology Student
+
+GitHub: [@rishihake-21](https://github.com/rishihake-21)
